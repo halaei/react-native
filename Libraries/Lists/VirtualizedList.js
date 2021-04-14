@@ -336,6 +336,12 @@ type State = {
   ...
 };
 
+type CachedCell = {
+  component: any,
+  deps: Array<any>,
+  used?: boolean,
+};
+
 // Data propagated through nested lists (regardless of orientation) that is
 // useful for producing diagnostics for usage errors involving nesting (e.g
 // missing/duplicate keys).
@@ -868,25 +874,27 @@ class VirtualizedList extends React.PureComponent<Props, State> {
     };
   }
 
-  _cellsCache = new Map();
+  _cachedCells: Map<string, CachedCell> = new Map<string, CachedCell>();
   _cells = [];
 
+
   _markCellsAsUnused() {
-    this._cellsCache.forEach(cell => {
+    this._cachedCells.forEach(cell => {
       cell.used = false;
     });
   }
 
   _deleteUnusedCells() {
-    this._cellsCache.forEach((cell, key) => {
+    this._cachedCells.forEach((cell, key) => {
       if (!cell.used) {
-        this._cellsCache.delete(key);
+        this._cachedCells.delete(key);
       }
     });
   }
 
   _pushCell(key, deps, creator) {
-    let cell = this._cellsCache.get(key);
+    //$FlowFixMe[incompatible-type]
+    let cell: CachedCell = this._cachedCells.get(key);
     let depsChanged = false;
     if (!cell || cell.deps.length !== deps.length) {
       depsChanged = true;
@@ -899,7 +907,7 @@ class VirtualizedList extends React.PureComponent<Props, State> {
       }
     }
     if (depsChanged) {
-      this._cellsCache.set(
+      this._cachedCells.set(
         key,
         (cell = {
           component: creator(),
@@ -1020,7 +1028,13 @@ class VirtualizedList extends React.PureComponent<Props, State> {
       if (stickyIndicesFromProps.has(0)) {
         stickyHeaderIndices.push(0);
       }
-      this._pushCell('$header', [], () => {
+      const deps = [
+        inversionStyle,
+        ListHeaderComponent,
+        this.props.extraData,
+        this.props.ListHeaderComponentStyle,
+      ];
+      this._pushCell('$header', deps, () => {
         const element = React.isValidElement(ListHeaderComponent) ? (
           ListHeaderComponent
         ) : (
@@ -1152,29 +1166,33 @@ class VirtualizedList extends React.PureComponent<Props, State> {
         );
       }
     } else if (ListEmptyComponent) {
-      this._pushCell('$empty', [], () => {
-        const element: React.Element<any> = ((React.isValidElement(
-          ListEmptyComponent,
-        ) ? (
-          ListEmptyComponent
-        ) : (
-          // $FlowFixMe
-          <ListEmptyComponent />
-        )): any);
-        return React.cloneElement(element, {
-          key: '$empty',
-          onLayout: event => {
-            this._onLayoutEmpty(event);
-            if (element.props.onLayout) {
-              element.props.onLayout(event);
-            }
-          },
-          style: StyleSheet.compose(inversionStyle, element.props.style),
-        });
-      });
+      const element: React.Element<any> = ((React.isValidElement(
+        ListEmptyComponent,
+      ) ? (
+        ListEmptyComponent
+      ) : (
+        // $FlowFixMe
+        <ListEmptyComponent />
+      )): any);
+      this._cells.push(React.cloneElement(element, {
+        key: '$empty',
+        onLayout: event => {
+          this._onLayoutEmpty(event);
+          if (element.props.onLayout) {
+            element.props.onLayout(event);
+          }
+        },
+        style: StyleSheet.compose(inversionStyle, element.props.style),
+      }));
     }
     if (ListFooterComponent) {
-      this._pushCell('$footer', [], () => {
+      const deps = [
+        inversionStyle,
+        ListFooterComponent,
+        this.props.extraData,
+        this.props.ListFooterComponentStyle,
+      ];
+      this._pushCell('$footer', deps, () => {
         const element = React.isValidElement(ListFooterComponent) ? (
           ListFooterComponent
         ) : (
